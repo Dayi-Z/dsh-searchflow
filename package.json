@@ -1,8 +1,9 @@
 {
   "name": "dsh-searchflow",
   "version": "0.1.0",
-  "description": "Swimlane search-flow visualizer for DSH — real-time tool lifecycle rendering with animated icons",
+  "description": "Search-flow visualizer + snapshot accelerator for DeepSeek Harness: real-time animated tool-call lifecycle icons (SSE-driven) and tools/execute interception that short-circuits web_snapshot / browser_open from cache and prefetches top search results.",
   "license": "MIT",
+  "author": "dsh-searchflow contributors",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -11,7 +12,27 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "cordis.patch.yml"],
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": "^22.19 || >=24",
+    "dsh": ">=0.1.0-rc.6"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "search",
+    "web",
+    "visualization",
+    "cache",
+    "snapshot",
+    "browser",
+    "swimlane"
+  ],
   "dsh": {
     "client": {
       "inject": [
