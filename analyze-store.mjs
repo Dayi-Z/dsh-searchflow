@@ -1,0 +1,13 @@
+import { DatabaseSync } from 'node:sqlite';
+const db = new DatabaseSync('C:/Users/HP/.dsh/data/web-search-pro/store.db');
+console.log('=== kind counts ===');
+for (const r of db.prepare('SELECT kind, COUNT(*) c FROM queries GROUP BY kind ORDER BY c DESC').all()) console.log(r.kind, r.c);
+console.log('=== rules ===');
+for (const r of db.prepare('SELECT hostname, content FROM rules').all()) console.log(r.hostname, '->', String(r.content).slice(0, 60));
+console.log('=== top duplicate queries ===');
+for (const r of db.prepare('SELECT query, COUNT(*) c FROM queries WHERE query IS NOT NULL GROUP BY query HAVING c > 1 ORDER BY c DESC LIMIT 10').all()) console.log(String(r.c).padStart(3), JSON.stringify(r.query).slice(0, 70));
+console.log('=== recent pages ===');
+console.log('pages total:', db.prepare('SELECT COUNT(*) c FROM pages').get().c);
+for (const r of db.prepare('SELECT url, status, source, fetched_at FROM pages ORDER BY fetched_at DESC LIMIT 8').all()) console.log(String(r.url).slice(0, 62), '|', r.status, '|', r.source, '|', r.fetched_at);
+console.log('=== cache_key reuse ===');
+for (const r of db.prepare('SELECT cache_key, COUNT(*) c FROM queries WHERE cache_key IS NOT NULL GROUP BY cache_key HAVING c > 1 ORDER BY c DESC LIMIT 8').all()) console.log(String(r.c).padStart(3), String(r.cache_key).slice(0, 40));

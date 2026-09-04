@@ -1,0 +1,8 @@
+# dsh-searchflow: search-flow swimlane visualizer
+# Install with:
+#   dsh plugin --profile web add D:\Harness\dsh-searchflow
+# Then restart the profile.
+- insert:
+  - id: searchflow
+    name: 'dsh-searchflow'
+    config: {}
