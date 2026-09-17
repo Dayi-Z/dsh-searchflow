@@ -2,7 +2,7 @@
 
 DSH 实时搜索加速插件，两件事：
 
-1. **可视化** — 把 `web_search → web_fetch → web_snapshot → browser_open/click → read` 每一步实时呈现在工具调用行内：用动效 `wb_*` 图标（运行中蓝光呼吸 / 完成绿勾 / 失败红 X）替换默认的通用图标，黑盒等待变成可见的前进。同时用 `⚠ 挑战 / ⚠ 404 / ⚠ 噪声` 徽标标记 Cloudflare 挑战页与 404 页等「假成功」结果。
+1. **可视化** — 把 `web_search → web_fetch → web_snapshot → browser_open/click → read` 每一步实时呈现在工具调用行内：用动效 `wb_*` 图标（运行中蓝光呼吸 / 完成绿勾 / 失败红 X）替换默认的通用图标，黑盒等待变成可见的前进。同时用 `⚠ 挑战 / ⚠ 404 / ⚠ 噪声` 徽标标记 Cloudflare 挑战页与 404 页等「假成功」结果。任务级另见下方「搜索流程卡片」——`搜索中 → 阅读中 → 撰写中` 阶段进度条 + 渐进结果流 + 完成摘要行。
 2. **加速** — 在 `tools/execute` 瀑布中拦截（不改任何上游包）：
    - `web_snapshot` 命中缓存直接短路（90s 全量渲染 → 5ms）
    - `browser_open` 命中缓存立即返回已渲染内容，真实导航在后台预热（省 networkidle 8s + 全页截图）
@@ -22,6 +22,7 @@ DSH 实时搜索加速插件，两件事：
 ┌─ Client (lib/client.js) ──────────────────────────────┐
 │  工具调用行内动态图标（搜索/抓取/快照/点击/阅读/导航）     │
 │  running/done/error 实时切换 + 行级高亮 + 光晕           │
+│  搜索流程面板：better-sidebar 在场 → 页签；缺席 → 浮动卡片 │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -39,6 +40,33 @@ DSH 实时搜索加速插件，两件事：
 | navigate | 其它导航类 | 路径绘制 |
 
 每个工具调用附带状态：`缓存`（fromCache 命中）与 `规则`（usedRule）徽标，加速效果可感可验证。
+
+## 搜索流程卡片（Wave 1 观感升级）
+
+工具行内图标之外，新增任务级「搜索流程」浮动卡片（右下角，搜索开始时出现，可收起/点击展开）：
+
+- **⚡ 深度模式（默认关）**：卡片头部金色闪电开关，开启后宿主在搜索前自动扩展查询——CJK 查询加英文学术关键词（`overview survey`），英文/拉丁查询加中文综述关键词（`最佳实践 综述`）。卡片实时显示「深度」徽章。通过 `GET/POST /searchflow/deep` 端点同步状态。
+- **阶段进度条**：`搜索中 → 阅读中 → 撰写中` 三段芯片，**直接复用现有动效图标**（进行中呼吸 / 完成绿勾绘制 / 空闲静置），配渐变连线与对齐标签行；「撰写中」由事件空闲 3.5s 推断（模型开始作答），完成后 9s 自动折叠成小胶囊。结果行带域名 hash 色徽章，双轮命中显示金色交叉验证勾。
+- **渐进结果流**：搜索完成事件携带 top-6 结果（标题 + 域名 + 摘要截断 ≤140 字符），客户端逐个浮现（70ms 错峰），可点击直达原文。
+- **完成摘要 chips**：进入「撰写中」后底部出现统计胶囊 —— `总耗时 · N 来源 · 去重 · 验证 高/中/低 · ≈tokens`，速度/广度/可信度/省 token 一次可感知，**不暴露任何引擎归属**（引擎是内部实现细节）。进入撰写中时 `doneAt` 记时点，时间从「进行中 Xs」冻结为「总耗时 Xs」，不再继续累计。
+- **数据来源**：宿主 `tool:completed` 事件新增 `durationMs / resultCount / distinctDomains / sourcesTop / charCount`；token 估算 = 摘要字符数 / 3.5；交叉验证置信度 = 多次搜索重复域名占比（≥2 次搜索才显示）。纯观察层实现，零上游依赖。
+- 无障碍：`prefers-reduced-motion` 下禁用全部动画；任务状态经 `window.__SF_DEBUG__.task` 透出便于诊断。
+
+## 宿主形态：better-sidebar 页签 / 独立浮动卡片
+
+搜索流程面板（阶段进度 + 结果流 + 摘要）有**两种寄生形态**，同一份实现（`SearchFlowCard` 的 `variant`），自动选择：
+
+| 形态 | 触发条件 | 表现 |
+|---|---|---|
+| **页签** | `ctx.betterSidebar` 在场 | 注册为侧栏页签（id `searchflow:panel`，`single`，order 96）：铺满容器、结果区占满剩余高度并自滚动、显示空态、不自带浮动外框与收起按钮 |
+| **浮动卡片** | better-sidebar 缺席 | 维持右下角卡片（fixed / 368px / 毛玻璃 / 可收起成胶囊） |
+
+- **软依赖**：better-sidebar 是可选同伴，只按结构探测 `ctx.get('betterSidebar')`，**不 import 它的类型**（否则软集成会变成硬构建依赖）。注册后回读 `getTab` 校验；读不到就抛错并退回浮动卡片——宁可有卡片，不可没面板。
+- **迟到接入**：better-sidebar 比本插件晚挂载时，`ctx.inject(['betterSidebar'])` 一到就换成页签并撤掉浮动卡片，避免同一份数据在屏幕上有两个出处。
+- **可见性**：宿主给 `visible=false`（页签被切走）时停止 400ms 重绘定时器。
+- **手动覆盖**：`localStorage['sf.host'] = 'dock' | 'tab'` 强制形态（默认 `auto`）。
+- **诊断**：当前形态写在 `document.body.dataset.sfHost`（`tab` / `tab-late` / `dock`），面板根节点带 `data-sf-variant`。页签角标 = 进行中流程的结果数。
+- **已知边界**：宿主事件流不区分会话（`tools/execute` 是进程级观测），所以页签展示的是全局搜索流程，不随会话隔离；页签声明 `single`，只会有一个。
 
 ## 加速细节
 
@@ -69,15 +97,20 @@ dsh plugin --profile web add D:\Harness\dsh-searchflow
 - `lib/icons.js` — 共享图标源（供抽取参考；实际 client 内联）
 - `preview.html` — 独立泳道预览（vendor/ 本地 React UMD），含成功/错误双流程演示脚本
 - `test-realistic.mjs` — 回归测试（node 直跑，无依赖）
+- `test-sidebar-tab.mjs` — better-sidebar 集成回归（jsdom + 真实 React 18；jsdom/react 从 DSH 应用运行时解析，解析不到则 SKIP）
 
 ## 验证
 
 ```bash
 node --check lib/index.js lib/client.js lib/icons.js
 node test-realistic.mjs
+node test-wave1.mjs
+node test-sidebar-tab.mjs
 ```
 
 覆盖：B#1 快照同 URL 短路、B#3 www/尾斜杠变体共享键、B#4 browser_open 缓存命中 + 后台 warm 刷新、B#5 无 browser 服务时预取静默降级。host 运行时以 node 模拟 cordis ctx 实测通过。
+
+`test-sidebar-tab.mjs` 覆盖四条宿主路径：better-sidebar 在场（注册页签 / 不挂卡片 / 空态可渲染 / 事件驱动后阶段条与结果流出现 / 角标有数）、缺席（浮动卡片 / 登记迟到接入）、迟到接入（换页签并撤卡片）、`sf.host=dock` 手动钉住；另含浮动卡片回归项（fixed 定位、368px、结果与摘要、收起胶囊）。
 
 ## License
 
