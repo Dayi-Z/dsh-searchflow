@@ -312,4 +312,10 @@ function feed(es, evt) { es.onmessage({ data: JSON.stringify(evt) }); }
 
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + '/' + results.length + ' checks passed');
-if (failed.length) { console.log('FAILURES: ' + failed.map((f) => f.name).join(', ')); process.exit(1); }
+if (failed.length) console.log('FAILURES: ' + failed.map((f) => f.name).join(', '));
+
+// Exit explicitly. Booting the client module starts timers that outlive the
+// assertions (the icon farm's animation loop, the panel's repaint interval),
+// so the event loop never drains and node would hang here instead of finishing
+// — which the shell reports as a failed run whichever way the checks went.
+process.exit(failed.length > 0 ? 1 : 0);
