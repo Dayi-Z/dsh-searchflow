@@ -3,7 +3,15 @@
   "version": "0.1.0",
   "description": "Search-flow visualizer + snapshot accelerator for DeepSeek Harness: real-time animated tool-call lifecycle icons (SSE-driven) and tools/execute interception that short-circuits web_snapshot / browser_open from cache and prefetches top search results.",
   "license": "MIT",
-  "author": "dsh-searchflow contributors",
+  "author": "Dayi-Z",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dayi-Z/dsh-searchflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Dayi-Z/dsh-searchflow/issues"
+  },
+  "homepage": "https://github.com/Dayi-Z/dsh-searchflow#readme",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -21,6 +29,10 @@
   "engines": {
     "node": "^22.19 || >=24",
     "dsh": ">=0.1.0-rc.6"
+  },
+  "scripts": {
+    "check": "node --check lib/index.js lib/client.js lib/icons.js",
+    "test": "node test-realistic.mjs && node test-wave1.mjs && node test-sidebar-tab.mjs"
   },
   "keywords": [
     "dsh-plugin",

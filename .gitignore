@@ -27,5 +27,6 @@ coverage/
 *.temp
 .tmp-*
 
-# Vendor (large binary assets - can be regenerated)
-vendor/
+# vendor/ (the React UMD builds preview.html loads) is committed on purpose:
+# preview.html is advertised in the README, and an ignored vendor/ turns it into
+# a blank page for anyone who clones the repo. 141 KB total.
