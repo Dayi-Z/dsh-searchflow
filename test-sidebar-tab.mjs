@@ -310,6 +310,57 @@ function feed(es, evt) { es.onmessage({ data: JSON.stringify(evt) }); }
   Date.now = realNow;
 }
 
+// ── Case G: what counts as a search, and records across a session switch ─────
+{
+  const b = await boot({ withSidebar: true });
+  const d = b.doc;
+  const es = b.esInstances[0];
+  const desc = b.registered[0];
+  const host = d.createElement('div');
+  d.body.appendChild(host);
+  const root = ReactDOMClient.createRoot(host);
+  const render = () => React.act(async () => { root.render(desc.component({ visible: true })); });
+  const dbg = () => b.w.__SF_DEBUG__;
+
+  // G1/G2 — browsing is not searching: browser_open / web_fetch alone must not
+  //          open a "搜索流程" panel reading "0 次搜索".
+  await React.act(async () => {
+    feed(es, { id: 'g1a', type: 'tool:start', data: { tool: 'browser_open', phase: 'click', callId: 'g1' } });
+    feed(es, { id: 'g1b', type: 'tool:completed', data: { tool: 'browser_open', phase: 'click', callId: 'g1', durationMs: 900 } });
+    feed(es, { id: 'g1c', type: 'tool:completed', data: { tool: 'web_fetch', phase: 'fetch', callId: 'g1c', durationMs: 400 } });
+  });
+  await render();
+  check('G1 browsing alone opens no search task', dbg().task === null, JSON.stringify(dbg().task && dbg().task.phase));
+  check('G2 the tab stays on its empty state', (host.textContent || '').includes('还没有搜索流程'), JSON.stringify((host.textContent || '').slice(0, 40)));
+
+  // G3..G6 — a real search that came back with nothing is still ONE search: the
+  //          count follows the tool, not the presence of telemetry.
+  await React.act(async () => {
+    feed(es, { id: 'g3a', type: 'tool:start', data: { tool: 'web_search_pro', phase: 'search', callId: 'g3', summary: '零结果的真实搜索' } });
+    feed(es, { id: 'g3b', type: 'tool:completed', data: { tool: 'web_search_pro', phase: 'search', callId: 'g3', durationMs: 500 } });
+  });
+  await render();
+  check('G3 a search without sourcesTop still counts as one search', !!dbg().task && dbg().task.searchCount === 1, dbg().task && dbg().task.searchCount);
+  check('G4 the search task records its query', !!dbg().task && dbg().task.queries[0] === '零结果的真实搜索', JSON.stringify(dbg().task && dbg().task.queries));
+  check('G5 the panel reads 1 次搜索, not 0', (host.textContent || '').includes('1 次搜索'), JSON.stringify((host.textContent || '').slice(0, 30)));
+  check('G6 no event path throws (announce is module-scope)', dbg().lastErr === undefined || dbg().lastErr === null, String(dbg().lastErr));
+
+  // G7..G10 — a session switch (a NEW flow column) must archive the running
+  //           search rather than dropping it. The scheduler notices on its tick.
+  const flowA = d.createElement('div'); flowA.setAttribute('data-chat-flow', 'a'); d.body.appendChild(flowA);
+  await new Promise((r) => setTimeout(r, 420));            // let the boot tick set lastFlow
+  const flowB = d.createElement('div'); flowB.setAttribute('data-chat-flow', 'b'); d.body.appendChild(flowB); flowA.remove();
+  await new Promise((r) => setTimeout(r, 260));            // observer -> tick -> resetFlow
+  await render();
+  check('G7 the session switch archives the running search', dbg().history.length === 1, 'n=' + dbg().history.length);
+  check('G8 the archived record keeps its query across the switch', !!dbg().history[0] && dbg().history[0].queries[0] === '零结果的真实搜索', JSON.stringify(dbg().history[0] && dbg().history[0].queries));
+  check('G9 the live task is cleared by the switch', dbg().task === null, JSON.stringify(dbg().task && dbg().task.phase));
+  const afterSwitch = host.textContent || '';
+  check('G10 the record is still rendered after the switch', afterSwitch.includes('零结果的真实搜索') && afterSwitch.includes('当前没有进行中的检索'), JSON.stringify(afterSwitch.replace(/\s+/g, ' ').slice(0, 90)));
+
+  await React.act(async () => { root.unmount(); });
+}
+
 const failed = results.filter((r) => !r.ok);
 console.log('\n' + (results.length - failed.length) + '/' + results.length + ' checks passed');
 if (failed.length) console.log('FAILURES: ' + failed.map((f) => f.name).join(', '));

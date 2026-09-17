@@ -77,7 +77,26 @@ DSH 实时搜索加速插件，两件事：
 - **不记录空任务**：只跑过 `browser_open` 之类、既没搜索也没结果的任务不占位置。
 - **没有进行中的检索时**，页签显示「当前没有进行中的检索」+ 记录列表，而不是一块空面板。
 - **浮动卡片不显示记录**：卡片就那么点地方，堆历史只会挤掉当前任务 —— 这条只在页签形态出现。
+- **换会话不会清空**：切换会话时，**正在跑的那一轮会被归档成记录**再放手（而不是像以前那样直接丢掉），记录本身跨会话保留 —— 宿主事件流不区分会话，记录也就是全局的。
 - **生命周期**：记录是**页面会话级**的（内存），刷新后由宿主 SSE 回放重建最近一轮；不做 localStorage 持久化。
+
+### 什么算作一次「搜索」
+
+只有宿主 `TOOL_PHASE` 里映射为 `search` 的 **4 个工具**才算一轮检索的开始：
+
+| 工具 | 阶段 |
+|---|---|
+| `web_search` / `web_search_pro` | search |
+| `web_platform_search` | search |
+| `github_issue_list` | search |
+
+**其余网页工具都不算搜索**：`web_fetch` / `web_fetch_pro` / `web_exa_contents`（fetch）、`web_snapshot` / `browser_screenshot`（snapshot）、`browser_open` / `browser_click` / `browser_type` / `browser_recipe_run` / `browser_scroll`（click）、`browser_read` / `web_rule` / `web_history` / `web_search_stats` / `web_backend_status` / `web_deps` / `github_issue_read` 等（read）。
+
+三条规则：
+
+1. **只有搜索能开一轮新任务**。fetch / snapshot / click / read 只**顺带推进**已经在跑的那一轮；没有在跑的检索时它们什么都不开 —— 否则 agent 单纯打开一个网页，面板就会以「搜索流程」为标题冒出来显示「0 次搜索」。
+2. **搜索次数按工具身份计，不按"有没有带回结果"计**。一次真的搜索哪怕 0 结果（宿主没有 `sources` 可发、事件里就没有 `sourcesTop`），也记「1 次搜索 · 0 来源」—— 这和"根本没搜过"是两回事。
+3. **既没搜索也没结果的任务不进记录**（例如只有 `browser_open` 的一轮）。
 
 ## 加速细节
 
