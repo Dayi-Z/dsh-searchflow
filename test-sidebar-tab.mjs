@@ -7,6 +7,8 @@
  *   B  better-sidebar 不在场        → 浮动卡片；随后迟到接入 → 换页签并撤卡片
  *   C  localStorage['sf.host']=dock → 手动钉住独立形态（覆盖自动探测）
  *   D  dock 形态 + 真实任务          → 浮动卡片行为与改造前一致（含收起胶囊）
+ *   E  连续多次检索                  → 上一轮被归档成"检索记录"悬挂，而非被覆盖
+ *   F  dock 形态连续检索             → 浮动卡片不长出记录区
  *
  * jsdom / react / react-dom **不是**本包的依赖（本包无构建步骤、无运行时依赖），
  * 因此这里从 DSH 应用运行时解析；解析不到就 SKIP 而不是失败，
@@ -219,6 +221,93 @@ function feed(es, evt) { es.onmessage({ data: JSON.stringify(evt) }); }
   // the collapsed pill is marked by role, not data-sf-card (unchanged markup)
   const pill = mount.querySelector('[role="button"]');
   check('D7 collapse still yields the pill', !!pill && (pill.textContent || '').includes('搜索流程'), pill && pill.textContent);
+}
+
+// ── Case E: completed searches HANG as records instead of being replaced ────
+{
+  const realNow = Date.now;
+  let clockMs = realNow();
+  Date.now = () => clockMs;
+  const advance = (ms) => { clockMs += ms; };
+
+  const b = await boot({ withSidebar: true });
+  const d = b.doc;
+  const es = b.esInstances[0];
+  const desc = b.registered[0];
+  const host = d.createElement('div');
+  d.body.appendChild(host);
+  const root = ReactDOMClient.createRoot(host);
+
+  const search = async (id, query, urls) => {
+    await React.act(async () => {
+      feed(es, { id: id + '-a', type: 'tool:start', data: { tool: 'web_search_pro', phase: 'search', callId: id, summary: query } });
+      feed(es, { id: id + '-b', type: 'tool:completed', data: { tool: 'web_search_pro', phase: 'search', callId: id, durationMs: 800, resultCount: urls.length, charCount: 200,
+        sourcesTop: urls.map((u) => ({ url: u, title: u.replace('https://', '') })) } });
+    });
+  };
+
+  await search('c1', '第一个查询', ['https://a.example/1', 'https://b.example/1']);
+  await React.act(async () => { root.render(desc.component({ visible: true })); });
+  check('E1 first search archives nothing yet', (b.w.__SF_DEBUG__.history || []).length === 0, 'n=' + (b.w.__SF_DEBUG__.history || []).length);
+
+  advance(31000);                       // > TASK_IDLE_MS: the next search starts a new task
+  await search('c2', '第二个查询', ['https://c.example/1']);
+  await React.act(async () => { root.render(desc.component({ visible: true })); });
+
+  const hist = b.w.__SF_DEBUG__.history;
+  check('E2 the previous search is archived, not replaced', hist.length === 1, 'n=' + hist.length);
+  check('E3 the record keeps the query it searched', !!hist[0] && hist[0].queries[0] === '第一个查询', JSON.stringify(hist[0] && hist[0].queries));
+  check('E4 the record keeps its results', !!hist[0] && hist[0].results.length === 2, hist[0] && hist[0].results.length);
+
+  const txt = host.textContent || '';
+  check('E5 the hanging record is rendered', txt.includes('第一个查询'), JSON.stringify(txt.slice(0, 100)));
+  check('E6 the live panel still shows the current search', txt.includes('c.example'), JSON.stringify(txt.slice(0, 140)));
+  check('E7 a history section exists in the tab', host.querySelector('[data-sf-history]') !== null);
+
+  const rowBtn = host.querySelector('[data-sf-history] button');
+  await React.act(async () => { rowBtn.dispatchEvent(new b.w.MouseEvent('click', { bubbles: true })); });
+  const expanded = host.textContent || '';
+  check('E8 expanding a record reveals its own results', expanded.includes('a.example') && expanded.includes('b.example'), JSON.stringify(expanded.slice(0, 160)));
+
+  for (let i = 0; i < 24; i++) { advance(31000); await search('x' + i, 'q' + i, ['https://z' + i + '.example/1']); }
+  check('E9 history is capped at SF_HISTORY_MAX (20)', b.w.__SF_DEBUG__.history.length === 20, 'n=' + b.w.__SF_DEBUG__.history.length);
+
+  // a task that never searched must not become a record
+  advance(31000);
+  await React.act(async () => { feed(es, { id: 'n1', type: 'tool:start', data: { tool: 'browser_open', phase: 'click', callId: 'n1' } }); });
+  advance(31000);
+  await search('n2', '只带查询', ['https://q.example/1']);
+  // the browser_open-only task must not have taken a slot: the newest record is
+  // still the last real search from the loop ('q23'), and the count is unchanged.
+  const lastRec = b.w.__SF_DEBUG__.history[0];
+  check('E10 a search-less task is not archived as a record',
+    b.w.__SF_DEBUG__.history.length === 20 && !!lastRec && lastRec.queries[0] === 'q23',
+    'n=' + b.w.__SF_DEBUG__.history.length + ' newest=' + JSON.stringify(lastRec && lastRec.queries));
+
+  await React.act(async () => { root.unmount(); });
+  Date.now = realNow;
+}
+
+// ── Case F: the floating card never grows a history section ─────────────────
+{
+  const realNow = Date.now;
+  let clockMs = realNow();
+  Date.now = () => clockMs;
+  const b = await boot({ withSidebar: false });
+  const d = b.doc;
+  const es = b.esInstances[0];
+  const two = async (id, query, url) => React.act(async () => {
+    feed(es, { id: id + 'a', type: 'tool:start', data: { tool: 'web_search', phase: 'search', callId: id, summary: query } });
+    feed(es, { id: id + 'b', type: 'tool:completed', data: { tool: 'web_search', phase: 'search', callId: id, durationMs: 300, resultCount: 1, charCount: 50, sourcesTop: [{ url, title: 'T' }] } });
+  });
+  await two('f1', '卡片里的第一次', 'https://card.example/1');
+  clockMs += 31000;
+  await two('f2', '卡片里的第二次', 'https://card2.example/1');
+  await new Promise((r) => setTimeout(r, 80));
+  check('F1 the card still archives into the shared record list', b.w.__SF_DEBUG__.history.length === 1, 'n=' + b.w.__SF_DEBUG__.history.length);
+  check('F2 the card renders no history section', d.querySelector('[data-sf-history]') === null);
+  check('F3 the card is still the card', d.querySelector('[data-sf-card][data-sf-variant="card"]') !== null);
+  Date.now = realNow;
 }
 
 const failed = results.filter((r) => !r.ok);

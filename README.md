@@ -68,6 +68,17 @@ DSH 实时搜索加速插件，两件事：
 - **诊断**：当前形态写在 `document.body.dataset.sfHost`（`tab` / `tab-late` / `dock`），面板根节点带 `data-sf-variant`。页签角标 = 进行中流程的结果数。
 - **已知边界**：宿主事件流不区分会话（`tools/execute` 是进程级观测），所以页签展示的是全局搜索流程，不随会话隔离；页签声明 `single`，只会有一个。
 
+### 检索记录（悬挂，仅页签形态）
+
+侧栏空间够，所以**一次检索结束不等于它消失**：新的搜索开始时，上一轮不会把面板就地覆盖，而是**下移成「检索记录」里的一条**挂在页签底部，可以随时翻回去。
+
+- **一条记录 = 一行**：查询词（`tool:start` 的 summary）· 时间（HH:MM）· N 次搜索 · M 个独立来源。点一下展开，看它自己的结果列表 + 摘要 chips（总耗时 / 来源 / 去重 / ≈tokens）。
+- **顺序与上限**：最新在前（进行中的那轮在上面，历史在它下面）；最多 `SF_HISTORY_MAX = 20` 条，展开单条最多列 `SF_HISTORY_RESULTS = 30` 条结果。
+- **不记录空任务**：只跑过 `browser_open` 之类、既没搜索也没结果的任务不占位置。
+- **没有进行中的检索时**，页签显示「当前没有进行中的检索」+ 记录列表，而不是一块空面板。
+- **浮动卡片不显示记录**：卡片就那么点地方，堆历史只会挤掉当前任务 —— 这条只在页签形态出现。
+- **生命周期**：记录是**页面会话级**的（内存），刷新后由宿主 SSE 回放重建最近一轮；不做 localStorage 持久化。
+
 ## 加速细节
 
 | 拦截点 | 行为 | 收益 |
@@ -83,7 +94,8 @@ DSH 实时搜索加速插件，两件事：
 ## 安装
 
 ```bash
-dsh plugin --profile web add D:\Harness\dsh-searchflow
+dsh plugin --profile web add dsh-searchflow          # 已发布/已收录后
+dsh plugin --profile web add /path/to/dsh-searchflow # 或直接从源码目录/GitHub 地址装
 ```
 
 重启 profile 后生效。卸载：`dsh plugin --profile web remove dsh-searchflow`。
@@ -110,7 +122,7 @@ node test-sidebar-tab.mjs
 
 覆盖：B#1 快照同 URL 短路、B#3 www/尾斜杠变体共享键、B#4 browser_open 缓存命中 + 后台 warm 刷新、B#5 无 browser 服务时预取静默降级。host 运行时以 node 模拟 cordis ctx 实测通过。
 
-`test-sidebar-tab.mjs` 覆盖四条宿主路径：better-sidebar 在场（注册页签 / 不挂卡片 / 空态可渲染 / 事件驱动后阶段条与结果流出现 / 角标有数）、缺席（浮动卡片 / 登记迟到接入）、迟到接入（换页签并撤卡片）、`sf.host=dock` 手动钉住；另含浮动卡片回归项（fixed 定位、368px、结果与摘要、收起胶囊）。
+`test-sidebar-tab.mjs`（46 项）覆盖六组：**A** better-sidebar 在场（注册页签 / 不挂卡片 / 空态可渲染 / 事件驱动后阶段条与结果流出现 / 角标有数）、**B** 缺席（浮动卡片 / 登记迟到接入）、**C** `sf.host=dock` 手动钉住、**D** 浮动卡片回归（fixed 定位、368px、结果与摘要、收起胶囊）、**E** 检索记录悬挂（旧的一轮被归档而非覆盖、记录保留查询词与结果、记录区渲染、展开可见结果、20 条上限、空任务不占位）、**F** 浮动卡片不长出记录区。E 组用可推进的假时钟跨过 30s 任务间隔。
 
 ## License
 
