@@ -358,6 +358,19 @@ function feed(es, evt) { es.onmessage({ data: JSON.stringify(evt) }); }
   const afterSwitch = host.textContent || '';
   check('G10 the record is still rendered after the switch', afterSwitch.includes('零结果的真实搜索') && afterSwitch.includes('当前没有进行中的检索'), JSON.stringify(afterSwitch.replace(/\s+/g, ' ').slice(0, 90)));
 
+  // G11/G12 — knowledge/MCP search is NOT web search: wiki_recall / mcp_search
+  // carry the 'search' phase for their row icon, but the SEARCH_TOOLS identity
+  // guard must keep them from opening a search-flow round or touching history.
+  await React.act(async () => {
+    feed(es, { id: 'g11a', type: 'tool:start', data: { tool: 'wiki_recall', phase: 'search', callId: 'g11', summary: '搜索流程并发控制' } });
+    feed(es, { id: 'g11b', type: 'tool:completed', data: { tool: 'wiki_recall', phase: 'search', callId: 'g11', durationMs: 12, wikiVerdict: 'miss' } });
+    feed(es, { id: 'g11c', type: 'tool:start', data: { tool: 'mcp_search', phase: 'search', callId: 'g11c', summary: 'confluence' } });
+    feed(es, { id: 'g11d', type: 'tool:completed', data: { tool: 'mcp_search', phase: 'search', callId: 'g11d', durationMs: 300 } });
+  });
+  await render();
+  check('G11 wiki_recall/mcp_search (search phase) open no search round', dbg().task === null, JSON.stringify(dbg().task && dbg().task.phase));
+  check('G12 history still holds exactly the one real search', dbg().history.length === 1, 'n=' + dbg().history.length);
+
   await React.act(async () => { root.unmount(); });
 }
 

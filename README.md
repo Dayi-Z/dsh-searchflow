@@ -32,11 +32,11 @@ DSH 实时搜索加速插件，两件事：
 
 | 阶段 | 工具 | 图标 |
 |---|---|---|
-| search | `web_search` / `web_search_pro` / `web_platform_search` / `web_exa_search` / `github_issue_list` | 拉匣寻物 |
-| fetch | `web_fetch` / `web_fetch_pro` / `web_exa_contents` | 抓取 |
+| search | `web_search` / `web_search_pro` / `web_platform_search` / `github_issue_list` / `browser_automation_search` / `wiki_recall` / `mcp_search` | 拉匣寻物 |
+| fetch | `web_fetch` / `web_fetch_pro` / `web_exa_contents` / `browser_crawl` / `wiki_acquire` | 抓取 |
 | snapshot | `web_snapshot` / `browser_screenshot` | 取景·定影 |
-| click | `browser_open` / `browser_click` / `browser_type` / `browser_recipe_run` / `browser_scroll` | 指尖按靶 |
-| read | `browser_read` / `web_rule` / `web_history` / `web_search_stats` / `github_issue_read` 等 | 16宫格扫描 |
+| click | `browser_open` / `browser_click` / `browser_type` / `browser_hover` / `browser_set_files` / `browser_recipe_run` / `browser_scroll` / `browser_automation_run` | 指尖按靶 |
+| read | `browser_read` / `browser_evaluate` / `browser_status` / `browser_opencli_*` / `browser_script_*` / `wiki_*` / `mcp_call` / `web_rule` / `web_history` / `web_search_stats` / `github_issue_read` 等 | 16宫格扫描 |
 | navigate | 其它导航类 | 路径绘制 |
 
 每个工具调用附带状态：`缓存`（fromCache 命中）与 `规则`（usedRule）徽标，加速效果可感可验证。
@@ -97,6 +97,15 @@ DSH 实时搜索加速插件，两件事：
 1. **只有搜索能开一轮新任务**。fetch / snapshot / click / read 只**顺带推进**已经在跑的那一轮；没有在跑的检索时它们什么都不开 —— 否则 agent 单纯打开一个网页，面板就会以「搜索流程」为标题冒出来显示「0 次搜索」。
 2. **搜索次数按工具身份计，不按"有没有带回结果"计**。一次真的搜索哪怕 0 结果（宿主没有 `sources` 可发、事件里就没有 `sourcesTop`），也记「1 次搜索 · 0 来源」—— 这和"根本没搜过"是两回事。
 3. **既没搜索也没结果的任务不进记录**（例如只有 `browser_open` 的一轮）。
+
+### 知识库 / MCP 工具（dsh-learn-wiki / dsh-mcp-lens 集成）
+
+知识库检索与 MCP 检索也会出现在泳道里（`wiki_recall`/`mcp_search` 用 search 图标、`wiki_acquire` 用 fetch 图标、其余 `wiki_*`/`mcp_call` 用 read 图标），但**它们不算 Web 搜索**：
+
+- **开新一轮检索的判据 = 工具身份，不是 phase 字符串**。只有 `web_search` / `web_search_pro` / `web_platform_search` / `github_issue_list` 四个工具能开一轮；`wiki_recall` / `mcp_search` 虽带 search 阶段（行内图标友好），但不会误开「搜索流程」面板、不会计为一次搜索（客户端 `SEARCH_TOOLS` 白名单守卫）。
+- **wiki_recall CRAG 判定徽标**：宿主把 `wiki_recall` 的 `bucket`（hit/weak/miss）随完成事件发出，卡片/记录的「本次检索小结」会出现 `知识库 命中/弱命中/未命中` 芯片（绿/琥珀/红）——**miss = 知识库没答上、这轮才去搜的外网**，补料闭环（L3 自动补料该补什么）一眼可辨。
+- **L3 补料边界（实测）**：learn-wiki 的**自动补料**走 `ctx.web.search/fetch` 服务（`lib/acquire.js`），**不经 `tools/execute` 瀑布**——searchflow 看不到、也不拦截不加速它。只有 agent **显式调用 `wiki_acquire`**（映射为 fetch 阶段）时，补料过程才以单个工具调用形式出现在泳道里。
+- **补料数据衔接**：searchflow 每次 Web 搜索的 `sourcesTop / charCount / curl` 遥测本身是 `wiki_learn` 来源（`sources=`）的现成数据——检索到的好结果可顺手沉淀为知识页（两段式 staged → commit）。
 
 ## 加速细节
 
