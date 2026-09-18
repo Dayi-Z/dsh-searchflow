@@ -4,6 +4,6 @@
 # (or a checkout: dsh plugin --profile web add /path/to/dsh-searchflow)
 # Then restart the profile.
 - insert:
-  - id: searchflow
+  - id: dsh-searchflow
     name: 'dsh-searchflow'
     config: {}
