@@ -29,7 +29,7 @@ function resolveHarness() {
   for (const base of bases) {
     try {
       const r = createRequire(base);
-      return { JSDOM: r('jsdom').JSDOM, React: r('react'), ReactDOMClient: r('react-dom/client') };
+      return { JSDOM: r('jsdom').JSDOM, React: r('react'), ReactDOMClient: r('react-dom/client'), ReactDOM: r('react-dom') };
     } catch { /* 换下一个基准目录 */ }
   }
   return null;
@@ -41,7 +41,7 @@ if (!harness) {
   console.log('       （本包无运行时依赖；请在装有 DSH 应用运行时的机器上跑）');
   process.exit(0);
 }
-const { JSDOM, React, ReactDOMClient } = harness;
+const { JSDOM, React, ReactDOMClient, ReactDOM } = harness;
 
 const results = [];
 function check(name, cond, extra) {
@@ -75,7 +75,7 @@ async function boot({ withSidebar }) {
 
   const mod = def.factory((name) => {
     if (name === 'react') return React;
-    if (name === 'react-dom/client') return ReactDOMClient;
+    if (name === 'react-dom') return ReactDOM;
     throw new Error('unexpected require: ' + name);
   });
 
@@ -95,7 +95,7 @@ async function boot({ withSidebar }) {
   };
 
   new Function('window', src)(w);          // fresh definition per boot
-  const mod2 = def.factory((name) => (name === 'react' ? React : ReactDOMClient));
+  const mod2 = def.factory((name) => (name === 'react' ? React : (name === 'react-dom' ? ReactDOM : ReactDOMClient)));
   mod2.apply(ctx);
   await new Promise((r) => setTimeout(r, 50));
 
@@ -186,7 +186,7 @@ function feed(es, evt) { es.onmessage({ data: JSON.stringify(evt) }); }
   w.__ModuleLoader__ = { load: (x) => { def = x; } };
   const src = readFileSync(SRC, 'utf8');
   new Function('window', src)(w);
-  const mod = def.factory((n) => (n === 'react' ? React : ReactDOMClient));
+  const mod = def.factory((n) => (n === 'react' ? React : (n === 'react-dom' ? ReactDOM : ReactDOMClient)));
   const registered = [];
   const service = { registerTab(d) { registered.push(d); return () => {}; }, getTab: () => undefined };
   mod.apply({ get: (n) => (n === 'betterSidebar' ? service : undefined), inject: () => {}, effect: () => {}, logger: () => ({ info() {}, error() {} }) });
